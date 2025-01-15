@@ -17,11 +17,11 @@ from kubernetes import (
     config,
 )
 
-from src.api.azure_clients import AzureStorageClientManager
+from src.api.azure_clients import AzureClientManager
 from src.api.common import sanitize_name
-from src.models import PipelineJob
-from src.reporting.reporter_singleton import ReporterSingleton
+from src.logger.logger_singleton import LoggerSingleton
 from src.typing.pipeline import PipelineJobState
+from src.utils.pipeline import PipelineJob
 
 
 def schedule_indexing_job(index_name: str):
@@ -47,7 +47,7 @@ def schedule_indexing_job(index_name: str):
             body=job_manifest, namespace=os.environ["AKS_NAMESPACE"]
         )
     except Exception:
-        reporter = ReporterSingleton().get_instance()
+        reporter = LoggerSingleton().get_instance()
         reporter.on_error(
             "Index job manager encountered error scheduling indexing job",
         )
@@ -88,7 +88,8 @@ def list_k8s_jobs(namespace: str) -> list[str]:
     jobs = batch_v1.list_namespaced_job(namespace=namespace)
     job_list = []
     for job in jobs.items:
-        job_list.append(job.metadata.name)
+        if job.metadata.name.startswith("indexing-job-") and job.status.active:
+            job_list.append(job.metadata.name)
     return job_list
 
 
@@ -106,10 +107,10 @@ def main():
     """
     kubernetes_jobs = list_k8s_jobs(os.environ["AKS_NAMESPACE"])
 
-    azure_storage_client_manager = AzureStorageClientManager()
+    azure_storage_client_manager = AzureClientManager()
     job_container_store_client = (
         azure_storage_client_manager.get_cosmos_container_client(
-            database_name="graphrag", container_name="jobs"
+            database="graphrag", container="jobs"
         )
     )
     # retrieve status of all index jobs that are scheduled or running
@@ -124,7 +125,7 @@ def main():
                 )
                 pipelinejob = PipelineJob()
                 pipeline_job = pipelinejob.load_item(item["sanitized_index_name"])
-                pipeline_job["status"] = PipelineJobState.FAILED.value
+                pipeline_job.status = PipelineJobState.FAILED
             else:
                 print(
                     f"Indexing job for '{item['human_readable_index_name']}' already running. Will not schedule another. Exiting..."

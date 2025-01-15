@@ -30,7 +30,7 @@ param systemOsDiskSizeGB int = 128
 param systemNodeCount int = 1
 
 @description('The size of the system Virtual Machine.')
-param systemVMSize string = 'standard_d4s_v5'
+param systemVMSize string = 'standard_d4s_v5' // 4 vcpu, 16 GB memory
 
 @description('The number of nodes for the graphrag node pool.')
 @minValue(1)
@@ -62,6 +62,8 @@ param ingressRoleAssignments array = []
 @description('Array of objects with fields principalType, roleDefinitionId')
 param systemRoleAssignments array = []
 
+@description('Array of object ids that will have admin role of the cluster')
+param clusterAdmins array = []
 
 resource privateDnsZone 'Microsoft.Network/privateDnsZones@2020-06-01' existing = {
   name: privateDnsZoneName
@@ -76,6 +78,11 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-02-01' = {
   properties: {
     enableRBAC: true
     dnsPrefix: !empty(dnsPrefix) ? dnsPrefix : toLower(clusterName)
+    aadProfile: {
+      managed: true
+      enableAzureRBAC: true
+      adminGroupObjectIDs: clusterAdmins
+    }
     addonProfiles: {
       omsagent: {
         enabled: true
@@ -125,8 +132,9 @@ resource aks 'Microsoft.ContainerService/managedClusters@2024-02-01' = {
       }
     }
     networkProfile: {
-      serviceCidr: '10.2.0.0/16'
-      dnsServiceIP: '10.2.0.10'
+      serviceCidr: '10.3.0.0/16'  // must not overlap with any subnet IP ranges
+      dnsServiceIP: '10.3.0.10'   // must be within the range specified in serviceCidr
+      podCidr: '10.244.0.0/16'    // IP range from which to assign pod IPs
     }
     autoUpgradeProfile: autoUpgradeProfile
     oidcIssuerProfile: {

@@ -29,6 +29,9 @@ param graphRagName string
 @description('Cloud region for all resources')
 param location string = resourceGroup().location
 
+@description('Principal/Object ID of the deployer. Will be used to assign admin roles to the AKS cluster.')
+param deployerPrincipalId string
+
 @minLength(1)
 @description('Name of the publisher of the API Management instance.')
 param publisherName string
@@ -124,14 +127,14 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
   properties: {
     addressSpace: {
       addressPrefixes: [
-        '10.0.0.0/8'
+        '10.1.0.0/16'
       ]
     }
     subnets: [
       {
         name: '${abbrs.networkVirtualNetworksSubnets}apim'
         properties: {
-          addressPrefix: '10.0.0.0/16'
+          addressPrefix: '10.1.0.0/24'
           networkSecurityGroup: {
             id: nsg.outputs.id
           }
@@ -148,7 +151,7 @@ resource vnet 'Microsoft.Network/virtualNetworks@2024-01-01' = {
       {
         name: '${abbrs.networkVirtualNetworksSubnets}aks'
         properties: {
-          addressPrefix: '10.1.0.0/16'
+          addressPrefix: '10.1.1.0/24'
           serviceEndpoints: [
             {
               service: 'Microsoft.Storage'
@@ -188,6 +191,7 @@ module aks 'core/aks/aks.bicep' = {
     location: location
     graphragVMSize: 'standard_d8s_v5'           // 8 vcpu, 32 GB memory
     graphragIndexingVMSize: 'standard_e8s_v5'   // 8 vcpus, 64 GB memory
+    clusterAdmins: ['${deployerPrincipalId}']
     sshRSAPublicKey: aksSshRsaPublicKey
     logAnalyticsWorkspaceId: log.outputs.id
     subnetId: vnet.properties.subnets[1].id // aks subnet
